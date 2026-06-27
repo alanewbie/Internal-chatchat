@@ -39,3 +39,15 @@ export async function readTextObject(key) {
 
   return response.Body.transformToString();
 }
+
+export async function readObjectBuffer(key) {
+  const response = await s3Client.send(
+    new GetObjectCommand({
+      Bucket: config.s3.bucket,
+      Key: key
+    })
+  );
+
+  const bytes = await response.Body.transformToByteArray();
+  return Buffer.from(bytes);
+}

@@ -1,0 +1,133 @@
+{
+  "family": "default-internal-chatchat-backend-6d65",
+  "taskRoleArn": "arn:aws:iam::379683255100:role/ECS-role-0f1640e6",
+  "executionRoleArn": "arn:aws:iam::379683255100:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "Main",
+      "image": "379683255100.dkr.ecr.us-east-1.amazonaws.com/internal-chatchat-backend@sha256:776092e32af0f5a5c332550aab71edb940e79efbde80789dcc7c65b98b8d2feb",
+      "cpu": 1024,
+      "memory": 2048,
+      "memoryReservation": 2048,
+      "portMappings": [
+        {
+          "containerPort": 4000,
+          "hostPort": 4000,
+          "protocol": "tcp",
+          "name": "main-4000-tcp"
+        }
+      ],
+      "essential": true,
+      "command": [],
+      "environment": [
+        {
+          "name": "RDS_HOST",
+          "value": "database-1.cluster-c2hkuqg2i7op.us-east-1.rds.amazonaws.com"
+        },
+        {
+          "name": "S3_BUCKET",
+          "value": "rag-files-folder"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "PORT",
+          "value": "4000"
+        },
+        {
+          "name": "S3_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "RDS_USER",
+          "value": "postgres"
+        },
+        {
+          "name": "S3_PRIVATE_DOWNLOADS",
+          "value": "true"
+        },
+        {
+          "name": "HOST",
+          "value": "0.0.0.0"
+        },
+        {
+          "name": "OPENSEARCH_EMBEDDING_DIMENSION",
+          "value": "1024"
+        },
+        {
+          "name": "BEDROCK_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "RDS_SSLMODE",
+          "value": "require"
+        },
+        {
+          "name": "OPENSEARCH_DOMAIN_ARN",
+          "value": "arn:aws:es:us-east-1:379683255100:domain/internalfile"
+        },
+        {
+          "name": "RDS_USE_IAM_AUTH",
+          "value": "true"
+        },
+        {
+          "name": "OPENSEARCH_ENDPOINT",
+          "value": "https://vpc-mydomain-rxg54uahgjrmy3bgoxgi2swbtm.us-east-1.es.amazonaws.com"
+        },
+        {
+          "name": "RDS_DATABASE",
+          "value": "postgres"
+        },
+        {
+          "name": "BEDROCK_CHAT_MODEL_ID",
+          "value": "anthropic.claude-opus-4-5-20251101-v1:0"
+        },
+        {
+          "name": "OPENSEARCH_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "RDS_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "OPENSEARCH_VECTOR_INDEX",
+          "value": "internal-chatchat-vectors"
+        },
+        {
+          "name": "S3_UPLOAD_PREFIX",
+          "value": "uploads/"
+        },
+        {
+          "name": "BEDROCK_EMBED_MODEL_ID",
+          "value": "amazon.titan-embed-text-v2:0"
+        }
+      ],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "secrets": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/ecs/default/internal-chatchat-backend-6d65-e71e",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "volumes": [],
+  "placementConstraints": [],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "1024",
+  "memory": "2048",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  }
+}

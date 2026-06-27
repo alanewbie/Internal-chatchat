@@ -140,8 +140,8 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const port = 4000;
-const host = "127.0.0.1";
+const port = Number(process.env.PORT ?? "4000");
+const host = process.env.HOST ?? "0.0.0.0";
 
 server.listen(port, host, () => {
   console.log(`Backend listening on http://${host}:${port}`);

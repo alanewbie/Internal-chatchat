@@ -1,12 +1,15 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
   askQuestion,
+  createDocumentUpload,
   createFaq,
+  indexDocument,
   loadDocuments,
   loadFaqs,
   loadLogs,
   loadPrompt,
   savePrompt,
+  uploadFileToSignedUrl,
   type ChatResponse,
   type DocumentRecord,
   type FaqEntry,
@@ -34,6 +37,9 @@ export function App() {
   const [faqQuestion, setFaqQuestion] = useState("");
   const [faqAnswer, setFaqAnswer] = useState("");
   const [faqTags, setFaqTags] = useState("");
+  const [documentTitle, setDocumentTitle] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [status, setStatus] = useState("Ready.");
 
@@ -102,6 +108,43 @@ export function App() {
     setStatus("Prompt saved.");
   }
 
+  async function handleUploadDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedFile) {
+      setStatus("Choose a PDF file first.");
+      return;
+    }
+
+    if (!selectedFile.name.toLowerCase().endsWith(".pdf")) {
+      setStatus("Only PDF upload is enabled in this admin step.");
+      return;
+    }
+
+    setIsUploadingDocument(true);
+
+    try {
+      const upload = await createDocumentUpload({
+        title: documentTitle.trim() || selectedFile.name.replace(/\.pdf$/i, ""),
+        fileName: selectedFile.name,
+        contentType: selectedFile.type || "application/pdf",
+        uploadedBy: email
+      });
+
+      await uploadFileToSignedUrl(upload.uploadUrl, selectedFile);
+      const indexed = await indexDocument(upload.documentId);
+
+      setDocumentTitle("");
+      setSelectedFile(null);
+      await refreshAdminData();
+      setStatus(`PDF uploaded and indexed. ${indexed.indexedChunks} chunks are ready for RAG.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Document upload failed.");
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  }
+
   function handleLogout() {
     setRole(null);
     setAdminView("overview");
@@ -152,13 +195,31 @@ export function App() {
       return (
         <section className="admin-content">
           <h2>RAG resource</h2>
-          <p className="hint">Phase 1 keeps this read-only. Next we add PDF upload and remove actions.</p>
+          <p className="hint">Upload a PDF, then this backend extracts text, creates embeddings, and stores vectors for RAG.</p>
+          <form onSubmit={handleUploadDocument} className="stack compact-form upload-form">
+            <input
+              value={documentTitle}
+              onChange={(event) => setDocumentTitle(event.target.value)}
+              placeholder="Document title"
+            />
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+            />
+            <button type="submit" disabled={isUploadingDocument}>
+              {isUploadingDocument ? "Uploading..." : "Upload PDF and index"}
+            </button>
+          </form>
           <div className="data-list">
             {documents.map((document) => (
               <div key={document.id} className="data-card">
                 <strong>{document.title}</strong>
                 <p>{document.fileName}</p>
                 <span>Status: {document.status}</span>
+                <a href={document.url} target="_blank" rel="noreferrer">
+                  Download source
+                </a>
               </div>
             ))}
           </div>
@@ -246,7 +307,12 @@ export function App() {
     return (
       <main className="page">
         <div className="frame">
-          <h1>Internal Chatchat</h1>
+          <div className="frame-header">
+            <h1>Internal Chatchat</h1>
+            <button type="button" onClick={handleLogout}>
+              Log out
+            </button>
+          </div>
           <div className="user-layout">
             <section className="conversation-panel">
               <div className="conversation-box">

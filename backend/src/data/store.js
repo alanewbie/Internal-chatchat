@@ -1,9 +1,10 @@
 import "dotenv/config";
+import pdfParse from "pdf-parse";
 import { config } from "../config.js";
 import { answerWithContext, createEmbedding } from "../lib/bedrock.js";
 import { withDb, newId } from "../lib/db.js";
 import { indexDocumentChunks, searchRelevantChunks } from "../lib/opensearch.js";
-import { buildDocumentKey, createDownloadUrl, createUploadUrl, readTextObject } from "../lib/s3.js";
+import { buildDocumentKey, createDownloadUrl, createUploadUrl, readObjectBuffer, readTextObject } from "../lib/s3.js";
 
 function chunkText(text, chunkSize = 1200, overlap = 200) {
   const chunks = [];
@@ -19,6 +20,22 @@ function chunkText(text, chunkSize = 1200, overlap = 200) {
   }
 
   return chunks.filter(Boolean);
+}
+
+async function extractDocumentText(document) {
+  const lowerName = document.file_name.toLowerCase();
+
+  if (lowerName.endsWith(".txt") || lowerName.endsWith(".md")) {
+    return readTextObject(document.s3_key);
+  }
+
+  if (lowerName.endsWith(".pdf")) {
+    const buffer = await readObjectBuffer(document.s3_key);
+    const parsed = await pdfParse(buffer);
+    return parsed.text;
+  }
+
+  throw new Error("Only .txt, .md, and .pdf indexing is supported");
 }
 
 export async function listFaqs() {
@@ -138,13 +155,12 @@ export async function indexDocument(documentId) {
     throw new Error("Document not found");
   }
 
-  const lowerName = document.file_name.toLowerCase();
-  if (!lowerName.endsWith(".txt") && !lowerName.endsWith(".md")) {
-    throw new Error("Only .txt and .md indexing is supported in this backend step");
-  }
-
-  const text = await readTextObject(document.s3_key);
+  const text = await extractDocumentText(document);
   const chunks = chunkText(text);
+
+  if (chunks.length === 0) {
+    throw new Error("Document text extraction returned no readable content");
+  }
 
   const vectorChunks = [];
   for (const chunk of chunks) {

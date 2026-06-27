@@ -31,12 +31,27 @@ export type LogRecord = {
   answer: string;
 };
 
-const API_BASE = "http://localhost:4000";
+export type UploadDocumentResponse = {
+  documentId: string;
+  s3Key: string;
+  uploadUrl: string;
+};
+
+export type IndexDocumentResponse = {
+  documentId: string;
+  indexedChunks: number;
+  status: string;
+};
+
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL?.trim() ||
+  "https://in-2c1ae487a2ab4bbc9f7e6f3944c712e5.ecs.us-east-1.on.aws";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {})
     },
     ...init
   });
@@ -83,4 +98,37 @@ export function loadDocuments() {
 
 export function loadLogs() {
   return request<{ items: LogRecord[] }>("/admin/logs");
+}
+
+export function createDocumentUpload(input: {
+  title: string;
+  fileName: string;
+  contentType: string;
+  uploadedBy: string;
+}) {
+  return request<UploadDocumentResponse>("/admin/documents/upload-url", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function uploadFileToSignedUrl(uploadUrl: string, file: File) {
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/pdf"
+    },
+    body: file
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.status}`);
+  }
+}
+
+export function indexDocument(documentId: string) {
+  return request<IndexDocumentResponse>("/admin/documents/index", {
+    method: "POST",
+    body: JSON.stringify({ documentId })
+  });
 }
