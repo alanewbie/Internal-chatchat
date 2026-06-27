@@ -45,6 +45,13 @@ button:hover {
   transform: translateY(-1px);
 }
 
+.secondary-button {
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--accent-dark);
+  border: 1px solid rgba(17, 94, 89, 0.18);
+  box-shadow: none;
+}
+
 input,
 textarea {
   width: 100%;
@@ -68,6 +75,13 @@ a {
 .hero {
   margin-bottom: 1.5rem;
   padding: 1rem 0 0.75rem;
+}
+
+.hero-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .hero h1 {
@@ -173,6 +187,11 @@ label span {
 @media (max-width: 1080px) {
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .hero-bar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .hero h1,

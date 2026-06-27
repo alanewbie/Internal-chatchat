@@ -56,6 +56,19 @@ export function App() {
     setStatus(`Signed in as ${nextRole}. Replace this with Cognito next.`);
   }
 
+  function handleLogout() {
+    setRole(null);
+    setPassword("");
+    setQuestion("");
+    setChat(null);
+    setFaqs([]);
+    setFaqQuestion("");
+    setFaqAnswer("");
+    setFaqTags("");
+    setSystemPrompt("");
+    setStatus("Signed out. Choose admin@example.com or user@example.com to switch roles.");
+  }
+
   async function handleAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("Checking FAQs and preparing answer...");
@@ -130,12 +143,17 @@ export function App() {
 
   return (
     <main className="shell app-shell">
-      <section className="hero compact">
-        <p className="eyebrow">Signed in as {role}</p>
-        <h1>Internal HR/IT Assistant</h1>
-        <p className="lede">
-          Phase 1 flow: FAQ first, then RAG fallback when we add document retrieval.
-        </p>
+      <section className="hero compact hero-bar">
+        <div>
+          <p className="eyebrow">Signed in as {role}</p>
+          <h1>Internal HR/IT Assistant</h1>
+          <p className="lede">
+            Phase 1 flow: FAQ first, then RAG fallback when we add document retrieval.
+          </p>
+        </div>
+        <button type="button" className="secondary-button" onClick={handleLogout}>
+          Log Out
+        </button>
       </section>
 
       <section className="grid">
