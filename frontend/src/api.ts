@@ -15,6 +15,22 @@ export type PromptConfig = {
   systemPrompt: string;
 };
 
+export type DocumentRecord = {
+  id: string;
+  title: string;
+  fileName: string;
+  url: string;
+  status: string;
+};
+
+export type LogRecord = {
+  id: string;
+  timestamp: string;
+  question: string;
+  mode: "faq" | "rag";
+  answer: string;
+};
+
 const API_BASE = "http://localhost:4000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -59,4 +75,12 @@ export function savePrompt(systemPrompt: string) {
     method: "PUT",
     body: JSON.stringify({ systemPrompt })
   });
+}
+
+export function loadDocuments() {
+  return request<{ items: DocumentRecord[] }>("/admin/documents");
+}
+
+export function loadLogs() {
+  return request<{ items: LogRecord[] }>("/admin/logs");
 }

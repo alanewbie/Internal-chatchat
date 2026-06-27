@@ -2,14 +2,19 @@ import { FormEvent, useEffect, useState } from "react";
 import {
   askQuestion,
   createFaq,
+  loadDocuments,
   loadFaqs,
+  loadLogs,
   loadPrompt,
   savePrompt,
   type ChatResponse,
-  type FaqEntry
+  type DocumentRecord,
+  type FaqEntry,
+  type LogRecord
 } from "./api";
 
 type Role = "user" | "admin";
+type AdminView = "overview" | "faq" | "rag" | "logs" | "prompt";
 
 const mockUsers = {
   "admin@example.com": "admin",
@@ -20,9 +25,12 @@ export function App() {
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role | null>(null);
+  const [adminView, setAdminView] = useState<AdminView>("overview");
   const [question, setQuestion] = useState("");
   const [chat, setChat] = useState<ChatResponse | null>(null);
   const [faqs, setFaqs] = useState<FaqEntry[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [logs, setLogs] = useState<LogRecord[]>([]);
   const [faqQuestion, setFaqQuestion] = useState("");
   const [faqAnswer, setFaqAnswer] = useState("");
   const [faqTags, setFaqTags] = useState("");
@@ -30,17 +38,22 @@ export function App() {
   const [status, setStatus] = useState("Ready.");
 
   useEffect(() => {
-    if (role !== "admin") {
-      return;
+    if (role === "admin") {
+      void refreshAdminData();
     }
-
-    void refreshAdminData();
   }, [role]);
 
   async function refreshAdminData() {
-    const [faqData, promptData] = await Promise.all([loadFaqs(), loadPrompt()]);
+    const [faqData, promptData, documentData, logData] = await Promise.all([
+      loadFaqs(),
+      loadPrompt(),
+      loadDocuments(),
+      loadLogs()
+    ]);
     setFaqs(faqData.items);
     setSystemPrompt(promptData.systemPrompt);
+    setDocuments(documentData.items);
+    setLogs(logData.items);
   }
 
   function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -53,28 +66,17 @@ export function App() {
     }
 
     setRole(nextRole);
-    setStatus(`Signed in as ${nextRole}. Replace this with Cognito next.`);
-  }
-
-  function handleLogout() {
-    setRole(null);
-    setPassword("");
-    setQuestion("");
-    setChat(null);
-    setFaqs([]);
-    setFaqQuestion("");
-    setFaqAnswer("");
-    setFaqTags("");
-    setSystemPrompt("");
-    setStatus("Signed out. Choose admin@example.com or user@example.com to switch roles.");
+    setStatus(`Signed in as ${nextRole}. Replace this mock login with Cognito.`);
   }
 
   async function handleAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setStatus("Checking FAQs and preparing answer...");
     const result = await askQuestion(question);
     setChat(result);
     setStatus(`Answered in ${result.mode.toUpperCase()} mode.`);
+    if (role === "admin") {
+      await refreshAdminData();
+    }
   }
 
   async function handleCreateFaq(event: FormEvent<HTMLFormElement>) {
@@ -97,87 +99,179 @@ export function App() {
   async function handleSavePrompt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await savePrompt(systemPrompt);
-    setStatus("System prompt saved.");
+    setStatus("Prompt saved.");
+  }
+
+  function handleLogout() {
+    setRole(null);
+    setAdminView("overview");
+    setQuestion("");
+    setChat(null);
+    setStatus("Logged out.");
+  }
+
+  function renderAdminPanel() {
+    if (adminView === "faq") {
+      return (
+        <section className="admin-content">
+          <h2>FAQ setting</h2>
+          <p className="hint">List all FAQ first. Admin can add and adjust later.</p>
+          <form onSubmit={handleCreateFaq} className="stack compact-form">
+            <input
+              value={faqQuestion}
+              onChange={(event) => setFaqQuestion(event.target.value)}
+              placeholder="FAQ question"
+            />
+            <textarea
+              rows={4}
+              value={faqAnswer}
+              onChange={(event) => setFaqAnswer(event.target.value)}
+              placeholder="FAQ answer"
+            />
+            <input
+              value={faqTags}
+              onChange={(event) => setFaqTags(event.target.value)}
+              placeholder="tags: hr, leave"
+            />
+            <button type="submit">Add FAQ</button>
+          </form>
+          <div className="data-list">
+            {faqs.map((faq) => (
+              <div key={faq.id} className="data-card">
+                <strong>{faq.question}</strong>
+                <p>{faq.answer}</p>
+                <span>{faq.tags.join(", ")}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (adminView === "rag") {
+      return (
+        <section className="admin-content">
+          <h2>RAG resource</h2>
+          <p className="hint">Phase 1 keeps this read-only. Next we add PDF upload and remove actions.</p>
+          <div className="data-list">
+            {documents.map((document) => (
+              <div key={document.id} className="data-card">
+                <strong>{document.title}</strong>
+                <p>{document.fileName}</p>
+                <span>Status: {document.status}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (adminView === "logs") {
+      return (
+        <section className="admin-content">
+          <h2>User log</h2>
+          <p className="hint">Read-only audit of chat requests and answer mode.</p>
+          <div className="data-list">
+            {logs.map((log) => (
+              <div key={log.id} className="data-card">
+                <strong>{log.question}</strong>
+                <p>{log.answer}</p>
+                <span>
+                  {log.mode.toUpperCase()} | {new Date(log.timestamp).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (adminView === "prompt") {
+      return (
+        <section className="admin-content">
+          <h2>Prompt setting</h2>
+          <p className="hint">Single system prompt for the assistant.</p>
+          <form onSubmit={handleSavePrompt} className="stack compact-form">
+            <textarea
+              rows={12}
+              value={systemPrompt}
+              onChange={(event) => setSystemPrompt(event.target.value)}
+            />
+            <button type="submit">Save prompt</button>
+          </form>
+        </section>
+      );
+    }
+
+    return (
+      <section className="admin-content">
+        <h2>Dashboard</h2>
+        <p>This area changes based on the service admin wants to manage.</p>
+        <div className="overview-grid">
+          <div className="overview-box">FAQ count: {faqs.length}</div>
+          <div className="overview-box">RAG files: {documents.length}</div>
+          <div className="overview-box">User logs: {logs.length}</div>
+          <div className="overview-box">Prompt ready</div>
+        </div>
+      </section>
+    );
   }
 
   if (!role) {
     return (
-      <main className="shell">
-        <section className="hero">
-          <p className="eyebrow">Phase 1 MVP</p>
-          <h1>Internal HR/IT Assistant</h1>
-          <p className="lede">
-            FAQ-first support assistant with a path to Bedrock-powered RAG.
-          </p>
-        </section>
-        <section className="panel auth-panel">
-          <h2>Sign In</h2>
-          <p className="muted">
-            Mock login for scaffold stage. We will replace this with Cognito.
-          </p>
+      <main className="page login-page">
+        <div className="frame login-frame">
+          <h1>Internal Chatchat</h1>
           <form onSubmit={handleLogin} className="stack">
-            <label>
-              <span>Email</span>
-              <input
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@example.com"
-              />
-            </label>
-            <label>
-              <span>Password</span>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Any non-empty value"
-              />
-            </label>
-            <button type="submit">Enter Workspace</button>
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="email"
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="password"
+            />
+            <button type="submit">Login</button>
           </form>
-          <p className="status">{status}</p>
-        </section>
+          <p className="hint">{status}</p>
+        </div>
       </main>
     );
   }
 
-  return (
-    <main className="shell app-shell">
-      <section className="hero compact hero-bar">
-        <div>
-          <p className="eyebrow">Signed in as {role}</p>
-          <h1>Internal HR/IT Assistant</h1>
-          <p className="lede">
-            Phase 1 flow: FAQ first, then RAG fallback when we add document retrieval.
-          </p>
-        </div>
-        <button type="button" className="secondary-button" onClick={handleLogout}>
-          Log Out
-        </button>
-      </section>
-
-      <section className="grid">
-        <div className="panel">
-          <h2>User Chat</h2>
-          <form onSubmit={handleAsk} className="stack">
-            <label>
-              <span>Ask a question</span>
-              <textarea
-                rows={5}
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder="How do I reset my VPN password?"
-              />
-            </label>
-            <button type="submit">Ask Assistant</button>
-          </form>
-
-          {chat ? (
-            <div className="answer">
-              <p className="badge">{chat.mode.toUpperCase()}</p>
-              <p>{chat.answer}</p>
-              {chat.sources.length > 0 ? (
-                <ul className="sources">
+  if (role === "user") {
+    return (
+      <main className="page">
+        <div className="frame">
+          <h1>Internal Chatchat</h1>
+          <div className="user-layout">
+            <section className="conversation-panel">
+              <div className="conversation-box">
+                {chat ? (
+                  <>
+                    <div className="conversation-title">Conversation</div>
+                    <p className="bubble user-bubble">{question}</p>
+                    <p className="bubble assistant-bubble">{chat.answer}</p>
+                  </>
+                ) : (
+                  <div className="placeholder">Conversation</div>
+                )}
+              </div>
+              <form onSubmit={handleAsk} className="input-row">
+                <input
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  placeholder="User insert"
+                />
+              </form>
+            </section>
+            <aside className="resource-panel">
+              <div className="sidebar-title">Additional info (EX: RAG resource)</div>
+              {chat?.sources.length ? (
+                <ul className="resource-list">
                   {chat.sources.map((source) => (
                     <li key={source.url}>
                       <a href={source.url}>{source.title}</a>
@@ -185,75 +279,44 @@ export function App() {
                   ))}
                 </ul>
               ) : (
-                <p className="muted">No source documents returned in this response.</p>
+                <p className="hint">No additional source yet.</p>
               )}
-            </div>
-          ) : null}
+            </aside>
+          </div>
         </div>
+      </main>
+    );
+  }
 
-        {role === "admin" ? (
-          <>
-            <div className="panel">
-              <h2>FAQ Admin</h2>
-              <form onSubmit={handleCreateFaq} className="stack">
-                <label>
-                  <span>Question</span>
-                  <input
-                    value={faqQuestion}
-                    onChange={(event) => setFaqQuestion(event.target.value)}
-                    placeholder="How do I request annual leave?"
-                  />
-                </label>
-                <label>
-                  <span>Answer</span>
-                  <textarea
-                    rows={4}
-                    value={faqAnswer}
-                    onChange={(event) => setFaqAnswer(event.target.value)}
-                    placeholder="Submit the request in Workday and notify your manager."
-                  />
-                </label>
-                <label>
-                  <span>Tags</span>
-                  <input
-                    value={faqTags}
-                    onChange={(event) => setFaqTags(event.target.value)}
-                    placeholder="hr, leave"
-                  />
-                </label>
-                <button type="submit">Create FAQ</button>
-              </form>
-
-              <div className="list">
-                {faqs.map((faq) => (
-                  <article key={faq.id} className="list-item">
-                    <h3>{faq.question}</h3>
-                    <p>{faq.answer}</p>
-                    <p className="muted">{faq.tags.join(", ")}</p>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <div className="panel">
-              <h2>Prompt Admin</h2>
-              <form onSubmit={handleSavePrompt} className="stack">
-                <label>
-                  <span>System Prompt</span>
-                  <textarea
-                    rows={10}
-                    value={systemPrompt}
-                    onChange={(event) => setSystemPrompt(event.target.value)}
-                  />
-                </label>
-                <button type="submit">Save Prompt</button>
-              </form>
-            </div>
-          </>
-        ) : null}
-      </section>
-
-      <p className="status">{status}</p>
+  return (
+    <main className="page">
+      <div className="frame">
+        <div className="admin-layout">
+          <aside className="admin-nav">
+            <h1>Chatchat admin</h1>
+            <button type="button" className="nav-item" onClick={() => setAdminView("overview")}>
+              Dashboard
+            </button>
+            <button type="button" className="nav-item" onClick={() => setAdminView("faq")}>
+              FAQ setting
+            </button>
+            <button type="button" className="nav-item" onClick={() => setAdminView("rag")}>
+              RAG resource
+            </button>
+            <button type="button" className="nav-item" onClick={() => setAdminView("logs")}>
+              User log
+            </button>
+            <button type="button" className="nav-item" onClick={() => setAdminView("prompt")}>
+              Prompt setting
+            </button>
+            <button type="button" className="nav-item logout-item" onClick={handleLogout}>
+              Log out
+            </button>
+          </aside>
+          <section className="admin-main">{renderAdminPanel()}</section>
+        </div>
+      </div>
+      <p className="footnote">{status}</p>
     </main>
   );
 }

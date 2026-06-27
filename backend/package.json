@@ -5,6 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "build": "node -e \"console.log('No build step yet')\""
+    "build": "node --eval \"import('./src/config.js'); import('./src/lib/db.js'); import('./src/lib/bedrock.js'); import('./src/lib/opensearch.js'); import('./src/lib/s3.js'); console.log('Backend modules loaded')\""
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1075.0",
+    "@aws-sdk/client-s3": "^3.1075.0",
+    "@aws-sdk/credential-provider-node": "^3.972.58",
+    "@aws-sdk/rds-signer": "^3.1075.0",
+    "@aws-sdk/s3-request-presigner": "^3.1075.0",
+    "@opensearch-project/opensearch": "^3.6.0",
+    "dotenv": "^17.4.2",
+    "pg": "^8.22.0"
   }
 }

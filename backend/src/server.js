@@ -1,15 +1,19 @@
 import http from "node:http";
-import { addFaq, getPromptConfig, listFaqs, setPromptConfig } from "./data/store.js";
+import {
+  addFaq,
+  addLog,
+  answerFromRag,
+  createDocumentUpload,
+  indexDocument,
+  getPromptConfig,
+  getRuntimeStatus,
+  listDocuments,
+  listFaqs,
+  listLogs,
+  setPromptConfig
+} from "./data/store.js";
 import { matchFaq } from "./lib/faqMatcher.js";
 import { readJson, sendJson } from "./lib/http.js";
-
-const documents = [
-  {
-    id: "doc-1",
-    title: "Remote Work Policy",
-    url: "https://example.com/remote-work-policy.pdf"
-  }
-];
 
 function notFound(res) {
   sendJson(res, 404, { error: "Not found" });
@@ -17,10 +21,15 @@ function notFound(res) {
 
 async function handleChat(req, res) {
   const body = await readJson(req);
-  const entries = listFaqs();
+  const entries = await listFaqs();
   const match = matchFaq(body.question ?? "", entries);
 
   if (match) {
+    await addLog({
+      question: body.question ?? "",
+      mode: "faq",
+      answer: match.answer
+    });
     sendJson(res, 200, {
       answer: match.answer,
       mode: "faq",
@@ -29,11 +38,18 @@ async function handleChat(req, res) {
     return;
   }
 
-  sendJson(res, 200, {
-    answer:
-      "No FAQ matched yet. This is where the Bedrock RAG flow will answer from uploaded documents in the next step.",
+  const ragResult = await answerFromRag(body.question ?? "");
+
+  await addLog({
+    question: body.question ?? "",
     mode: "rag",
-    sources: documents
+    answer: ragResult.answer
+  });
+
+  sendJson(res, 200, {
+    answer: ragResult.answer,
+    mode: "rag",
+    sources: ragResult.sources
   });
 }
 
@@ -49,7 +65,7 @@ async function handler(req, res) {
   }
 
   if (req.method === "GET" && req.url === "/health") {
-    sendJson(res, 200, { ok: true });
+    sendJson(res, 200, { ok: true, runtime: getRuntimeStatus() });
     return;
   }
 
@@ -59,13 +75,13 @@ async function handler(req, res) {
   }
 
   if (req.method === "GET" && req.url === "/admin/faqs") {
-    sendJson(res, 200, { items: listFaqs() });
+    sendJson(res, 200, { items: await listFaqs() });
     return;
   }
 
   if (req.method === "POST" && req.url === "/admin/faqs") {
     const body = await readJson(req);
-    const created = addFaq({
+    const created = await addFaq({
       question: body.question ?? "",
       answer: body.answer ?? "",
       tags: Array.isArray(body.tags) ? body.tags : []
@@ -75,18 +91,42 @@ async function handler(req, res) {
   }
 
   if (req.method === "GET" && req.url === "/admin/prompt") {
-    sendJson(res, 200, getPromptConfig());
+    sendJson(res, 200, await getPromptConfig());
     return;
   }
 
   if (req.method === "PUT" && req.url === "/admin/prompt") {
     const body = await readJson(req);
-    sendJson(res, 200, setPromptConfig(body.systemPrompt ?? ""));
+    sendJson(res, 200, await setPromptConfig(body.systemPrompt ?? ""));
     return;
   }
 
   if (req.method === "GET" && req.url === "/admin/documents") {
-    sendJson(res, 200, { items: documents });
+    sendJson(res, 200, { items: await listDocuments() });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/admin/documents/upload-url") {
+    const body = await readJson(req);
+    const payload = await createDocumentUpload({
+      title: body.title ?? body.fileName ?? "Untitled document",
+      fileName: body.fileName ?? "document.txt",
+      contentType: body.contentType ?? "text/plain",
+      uploadedBy: body.uploadedBy ?? "admin"
+    });
+    sendJson(res, 201, payload);
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/admin/documents/index") {
+    const body = await readJson(req);
+    const payload = await indexDocument(body.documentId ?? "");
+    sendJson(res, 200, payload);
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/admin/logs") {
+    sendJson(res, 200, { items: await listLogs() });
     return;
   }
 
