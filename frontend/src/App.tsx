@@ -19,6 +19,9 @@ import {
 
 type Role = "user" | "admin";
 type AdminView = "overview" | "faq" | "rag" | "logs" | "prompt";
+type ChatMessage =
+  | { id: string; role: "user"; text: string }
+  | { id: string; role: "assistant"; text: string; sources: ChatResponse["sources"] };
 
 const mockUsers = {
   "admin@example.com": "admin",
@@ -31,7 +34,8 @@ export function App() {
   const [role, setRole] = useState<Role | null>(null);
   const [adminView, setAdminView] = useState<AdminView>("overview");
   const [question, setQuestion] = useState("");
-  const [chat, setChat] = useState<ChatResponse | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [latestSources, setLatestSources] = useState<ChatResponse["sources"]>([]);
   const [faqs, setFaqs] = useState<FaqEntry[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [logs, setLogs] = useState<LogRecord[]>([]);
@@ -86,16 +90,38 @@ export function App() {
     }
 
     setIsAsking(true);
+    setQuestion("");
+    setMessages((current) => [
+      ...current,
+      { id: `user-${Date.now()}`, role: "user", text: trimmedQuestion }
+    ]);
 
     try {
       const result = await askQuestion(trimmedQuestion);
-      setQuestion(trimmedQuestion);
-      setChat(result);
+      setMessages((current) => [
+        ...current,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          text: result.answer,
+          sources: result.sources
+        }
+      ]);
+      setLatestSources(result.sources);
       setStatus(`Answered in ${result.mode.toUpperCase()} mode.`);
       if (role === "admin") {
         await refreshAdminData();
       }
     } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          text: error instanceof Error ? error.message : "Chat request failed.",
+          sources: []
+        }
+      ]);
       setStatus(error instanceof Error ? error.message : "Chat request failed.");
     } finally {
       setIsAsking(false);
@@ -172,7 +198,8 @@ export function App() {
     setRole(null);
     setAdminView("overview");
     setQuestion("");
-    setChat(null);
+    setMessages([]);
+    setLatestSources([]);
     setStatus("Logged out.");
   }
 
@@ -342,11 +369,19 @@ export function App() {
           <div className="user-layout">
             <section className="conversation-panel">
               <div className="conversation-box">
-                {chat ? (
+                {messages.length ? (
                   <>
                     <div className="conversation-title">Conversation</div>
-                    <p className="bubble user-bubble">{question}</p>
-                    <p className="bubble assistant-bubble">{chat.answer}</p>
+                    <div className="message-list">
+                      {messages.map((message) => (
+                        <p
+                          key={message.id}
+                          className={`bubble ${message.role === "user" ? "user-bubble" : "assistant-bubble"}`}
+                        >
+                          {message.text}
+                        </p>
+                      ))}
+                    </div>
                   </>
                 ) : (
                   <div className="placeholder">Conversation</div>
@@ -366,9 +401,9 @@ export function App() {
             </section>
             <aside className="resource-panel">
               <div className="sidebar-title">Additional info (EX: RAG resource)</div>
-              {chat?.sources.length ? (
+              {latestSources.length ? (
                 <ul className="resource-list">
-                  {chat.sources.map((source) => (
+                  {latestSources.map((source) => (
                     <li key={source.url}>
                       <a href={source.url}>{source.title}</a>
                     </li>

@@ -102,12 +102,23 @@ a {
 
 .conversation-box {
   padding: 18px;
+  overflow-y: auto;
 }
 
-.conversation-title,
 .placeholder {
   text-align: center;
   margin-top: 120px;
+}
+
+.conversation-title {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.message-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
 }
 
 .input-row input {
@@ -135,17 +146,22 @@ a {
 }
 
 .bubble {
-  margin: 12px 0;
+  margin: 0;
   padding: 10px 12px;
   border: 1px solid #bbb;
+  white-space: pre-wrap;
 }
 
 .user-bubble {
   background: #f5f5f5;
+  justify-self: end;
+  max-width: 75%;
 }
 
 .assistant-bubble {
   background: #eef6ff;
+  justify-self: start;
+  max-width: 85%;
 }
 
 .admin-layout {
