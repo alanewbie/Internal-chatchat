@@ -1,5 +1,5 @@
 import "dotenv/config";
-import pdfParse from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 import { config } from "../config.js";
 import { answerWithContext, createEmbedding } from "../lib/bedrock.js";
 import { withDb, newId } from "../lib/db.js";
@@ -31,7 +31,9 @@ async function extractDocumentText(document) {
 
   if (lowerName.endsWith(".pdf")) {
     const buffer = await readObjectBuffer(document.s3_key);
-    const parsed = await pdfParse(buffer);
+    const parser = new PDFParse({ data: buffer });
+    const parsed = await parser.getText();
+    await parser.destroy();
     return parsed.text;
   }
 

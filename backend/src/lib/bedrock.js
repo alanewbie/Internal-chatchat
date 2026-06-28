@@ -23,6 +23,10 @@ export async function answerWithContext({ systemPrompt, question, contexts }) {
   const command = new ConverseCommand({
     modelId: config.bedrock.chatModelId,
     system: [{ text: systemPrompt }],
+    inferenceConfig: {
+      maxTokens: 400,
+      temperature: 0.2
+    },
     messages: [
       {
         role: "user",
@@ -35,7 +39,10 @@ export async function answerWithContext({ systemPrompt, question, contexts }) {
               `Question: ${question}`,
               "",
               "Context:",
-              contexts.map((item, index) => `[${index + 1}] ${item}`).join("\n\n")
+              contexts
+                .slice(0, 2)
+                .map((item, index) => `[${index + 1}] ${item.slice(0, 1200)}`)
+                .join("\n\n")
             ].join("\n")
           }
         ]

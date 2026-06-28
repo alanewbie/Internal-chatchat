@@ -114,6 +114,12 @@ a {
   text-align: center;
 }
 
+.input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
 .resource-panel {
   padding: 14px;
 }

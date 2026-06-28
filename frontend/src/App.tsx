@@ -40,6 +40,7 @@ export function App() {
   const [documentTitle, setDocumentTitle] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [isAsking, setIsAsking] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [status, setStatus] = useState("Ready.");
 
@@ -77,11 +78,26 @@ export function App() {
 
   async function handleAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = await askQuestion(question);
-    setChat(result);
-    setStatus(`Answered in ${result.mode.toUpperCase()} mode.`);
-    if (role === "admin") {
-      await refreshAdminData();
+    const trimmedQuestion = question.trim();
+
+    if (!trimmedQuestion || isAsking) {
+      return;
+    }
+
+    setIsAsking(true);
+
+    try {
+      const result = await askQuestion(trimmedQuestion);
+      setQuestion(trimmedQuestion);
+      setChat(result);
+      setStatus(`Answered in ${result.mode.toUpperCase()} mode.`);
+      if (role === "admin") {
+        await refreshAdminData();
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Chat request failed.");
+    } finally {
+      setIsAsking(false);
     }
   }
 
@@ -331,7 +347,11 @@ export function App() {
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
                   placeholder="User insert"
+                  disabled={isAsking}
                 />
+                <button type="submit" disabled={isAsking || question.trim().length === 0}>
+                  {isAsking ? "Asking..." : "Send"}
+                </button>
               </form>
             </section>
             <aside className="resource-panel">
