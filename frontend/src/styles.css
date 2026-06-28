@@ -101,6 +101,7 @@ a {
 }
 
 .conversation-box {
+  height: 350px;
   padding: 18px;
   overflow-y: auto;
 }
@@ -122,7 +123,7 @@ a {
 }
 
 .input-row input {
-  text-align: center;
+  text-align: left;
 }
 
 .input-row {

@@ -13,7 +13,7 @@ import {
   readTextObject
 } from "../lib/s3.js";
 
-const MAX_RAG_CHUNKS = Number(process.env.MAX_RAG_CHUNKS ?? "30");
+const MAX_RAG_CHUNKS = Number(process.env.MAX_RAG_CHUNKS ?? "59");
 
 function sleep(milliseconds) {
   return new Promise((resolve) => {

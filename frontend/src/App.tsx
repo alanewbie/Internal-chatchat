@@ -42,7 +42,6 @@ export function App() {
   const [faqQuestion, setFaqQuestion] = useState("");
   const [faqAnswer, setFaqAnswer] = useState("");
   const [faqTags, setFaqTags] = useState("");
-  const [documentTitle, setDocumentTitle] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
@@ -168,7 +167,7 @@ export function App() {
 
     try {
       const upload = await createDocumentUpload({
-        title: documentTitle.trim() || selectedFile.name.replace(/\.pdf$/i, ""),
+        title: selectedFile.name.replace(/\.pdf$/i, ""),
         fileName: selectedFile.name,
         contentType: selectedFile.type || "application/pdf",
         uploadedBy: email
@@ -177,7 +176,6 @@ export function App() {
       await uploadFileToSignedUrl(upload.uploadUrl, selectedFile);
       const indexed = await indexDocument(upload.documentId);
 
-      setDocumentTitle("");
       setSelectedFile(null);
       await refreshAdminData();
       setStatus(`PDF uploaded and indexed. ${indexed.indexedChunks} chunks are ready for RAG.`);
@@ -261,11 +259,6 @@ export function App() {
           <h2>RAG resource</h2>
           <p className="hint">Upload a PDF, then this backend extracts text, creates embeddings, and stores vectors for RAG.</p>
           <form onSubmit={handleUploadDocument} className="stack compact-form upload-form">
-            <input
-              value={documentTitle}
-              onChange={(event) => setDocumentTitle(event.target.value)}
-              placeholder="Document title"
-            />
             <input
               type="file"
               accept="application/pdf,.pdf"
