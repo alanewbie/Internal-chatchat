@@ -16,7 +16,8 @@
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
-        "s3:PutObject"
+        "s3:PutObject",
+        "s3:DeleteObject"
       ],
       "Resource": [
         "arn:aws:s3:::rag-files-folder/uploads/*"
@@ -38,7 +39,8 @@
         "es:ESHttpGet",
         "es:ESHttpPost",
         "es:ESHttpPut",
-        "es:ESHttpHead"
+        "es:ESHttpHead",
+        "es:ESHttpDelete"
       ],
       "Resource": [
         "arn:aws:es:us-east-1:379683255100:domain/mydomain/*"
