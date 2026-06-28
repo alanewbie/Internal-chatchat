@@ -4,21 +4,46 @@ import { config } from "../config.js";
 
 const bedrock = new BedrockRuntimeClient({ region: config.bedrock.region });
 const AWS_CALL_TIMEOUT_MS = 20_000;
+const THROTTLE_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 12_000];
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function isThrottleError(error) {
+  return error?.name === "ThrottlingException" || error?.$metadata?.httpStatusCode === 429;
+}
 
 async function sendBedrock(command, label) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AWS_CALL_TIMEOUT_MS);
+  for (let attempt = 0; attempt <= THROTTLE_RETRY_DELAYS_MS.length; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AWS_CALL_TIMEOUT_MS);
 
-  try {
-    return await bedrock.send(command, { abortSignal: controller.signal });
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new Error(`${label} timed out after ${AWS_CALL_TIMEOUT_MS / 1000} seconds`);
+    try {
+      return await bedrock.send(command, { abortSignal: controller.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(`${label} timed out after ${AWS_CALL_TIMEOUT_MS / 1000} seconds`);
+      }
+
+      if (isThrottleError(error) && attempt < THROTTLE_RETRY_DELAYS_MS.length) {
+        await sleep(THROTTLE_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+
+      if (isThrottleError(error)) {
+        throw new Error(`${label} was throttled by Bedrock. Wait a minute, then try indexing fewer files at once.`);
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw new Error(`${label} failed after retries`);
 }
 
 export async function createEmbedding(text) {

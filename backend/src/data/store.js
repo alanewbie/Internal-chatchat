@@ -13,6 +13,12 @@ import {
   readTextObject
 } from "../lib/s3.js";
 
+function sleep(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
 function chunkText(text, chunkSize = 1200, overlap = 200) {
   const chunks = [];
   let start = 0;
@@ -164,7 +170,27 @@ export async function indexDocument(documentId) {
     throw new Error("Document not found");
   }
 
-  const text = await extractDocumentText(document);
+  let text;
+  try {
+    text = await extractDocumentText(document);
+  } catch (error) {
+    if (error?.name === "NoSuchKey" || error?.Code === "NoSuchKey") {
+      await withDb(async (client) => {
+        await client.query(
+          `
+            UPDATE documents
+            SET status = 'missing_file'
+            WHERE document_id = $1
+          `,
+          [documentId]
+        );
+      });
+
+      throw new Error(`S3 file is missing for this document: ${document.s3_key}. Delete this record and upload the PDF again.`);
+    }
+
+    throw error;
+  }
   const chunks = chunkText(text);
 
   if (chunks.length === 0) {
@@ -172,7 +198,11 @@ export async function indexDocument(documentId) {
   }
 
   const vectorChunks = [];
-  for (const chunk of chunks) {
+  for (const [index, chunk] of chunks.entries()) {
+    if (index > 0) {
+      await sleep(1_000);
+    }
+
     const vector = await createEmbedding(chunk);
     vectorChunks.push({
       chunkId: newId("chunk"),

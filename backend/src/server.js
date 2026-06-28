@@ -148,7 +148,7 @@ async function handler(req, res) {
 const server = http.createServer((req, res) => {
   handler(req, res).catch((error) => {
     console.error(error);
-    sendJson(res, 500, { error: "Internal server error" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Internal server error" });
   });
 });
 
