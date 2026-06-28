@@ -3,6 +3,23 @@ import { BedrockRuntimeClient, ConverseCommand, InvokeModelCommand } from "@aws-
 import { config } from "../config.js";
 
 const bedrock = new BedrockRuntimeClient({ region: config.bedrock.region });
+const AWS_CALL_TIMEOUT_MS = 20_000;
+
+async function sendBedrock(command, label) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AWS_CALL_TIMEOUT_MS);
+
+  try {
+    return await bedrock.send(command, { abortSignal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`${label} timed out after ${AWS_CALL_TIMEOUT_MS / 1000} seconds`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export async function createEmbedding(text) {
   const command = new InvokeModelCommand({
@@ -14,7 +31,7 @@ export async function createEmbedding(text) {
     })
   });
 
-  const response = await bedrock.send(command);
+  const response = await sendBedrock(command, "Bedrock embedding");
   const payload = JSON.parse(new TextDecoder().decode(response.body));
   return payload.embedding;
 }
@@ -50,7 +67,7 @@ export async function answerWithContext({ systemPrompt, question, contexts }) {
     ]
   });
 
-  const response = await bedrock.send(command);
+  const response = await sendBedrock(command, "Bedrock chat");
   const textBlocks = response.output?.message?.content?.flatMap((item) => ("text" in item ? [item.text] : [])) ?? [];
   return textBlocks.join("\n").trim();
 }

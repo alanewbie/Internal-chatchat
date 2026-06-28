@@ -57,7 +57,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    const payload = await response.json().catch(() => null);
+    const message =
+      payload && typeof payload === "object" && "error" in payload
+        ? String(payload.error)
+        : `Request failed: ${response.status}`;
+    throw new Error(message);
   }
 
   return response.json() as Promise<T>;
@@ -130,5 +135,11 @@ export function indexDocument(documentId: string) {
   return request<IndexDocumentResponse>("/admin/documents/index", {
     method: "POST",
     body: JSON.stringify({ documentId })
+  });
+}
+
+export function deleteDocument(documentId: string) {
+  return request<{ documentId: string; deleted: boolean }>(`/admin/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE"
   });
 }

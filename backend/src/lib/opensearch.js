@@ -10,7 +10,9 @@ export const openSearchClient = new Client({
     service: "es",
     getCredentials: () => defaultProvider()()
   }),
-  node: config.openSearch.endpoint
+  node: config.openSearch.endpoint,
+  maxRetries: 1,
+  requestTimeout: 15_000
 });
 
 let indexEnsured = false;
@@ -104,5 +106,21 @@ export async function indexDocumentChunks(chunks) {
   await openSearchClient.bulk({
     refresh: true,
     body
+  });
+}
+
+export async function deleteDocumentChunks(documentId) {
+  await ensureVectorIndex();
+
+  await openSearchClient.deleteByQuery({
+    index: config.openSearch.vectorIndex,
+    refresh: true,
+    body: {
+      query: {
+        term: {
+          document_id: documentId
+        }
+      }
+    }
   });
 }

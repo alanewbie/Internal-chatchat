@@ -3,8 +3,15 @@ import { PDFParse } from "pdf-parse";
 import { config } from "../config.js";
 import { answerWithContext, createEmbedding } from "../lib/bedrock.js";
 import { withDb, newId } from "../lib/db.js";
-import { indexDocumentChunks, searchRelevantChunks } from "../lib/opensearch.js";
-import { buildDocumentKey, createDownloadUrl, createUploadUrl, readObjectBuffer, readTextObject } from "../lib/s3.js";
+import { deleteDocumentChunks, indexDocumentChunks, searchRelevantChunks } from "../lib/opensearch.js";
+import {
+  buildDocumentKey,
+  createDownloadUrl,
+  createUploadUrl,
+  deleteObject,
+  readObjectBuffer,
+  readTextObject
+} from "../lib/s3.js";
 
 function chunkText(text, chunkSize = 1200, overlap = 200) {
   const chunks = [];
@@ -197,6 +204,39 @@ export async function indexDocument(documentId) {
   };
 }
 
+export async function deleteDocument(documentId) {
+  const document = await withDb(async (client) => {
+    const result = await client.query(
+      `
+        SELECT document_id, s3_key
+        FROM documents
+        WHERE document_id = $1
+      `,
+      [documentId]
+    );
+    return result.rows[0];
+  });
+
+  if (!document) {
+    throw new Error("Document not found");
+  }
+
+  await deleteDocumentChunks(document.document_id);
+  await deleteObject(document.s3_key);
+
+  await withDb(async (client) => {
+    await client.query(
+      `
+        DELETE FROM documents
+        WHERE document_id = $1
+      `,
+      [document.document_id]
+    );
+  });
+
+  return { documentId: document.document_id, deleted: true };
+}
+
 export async function listLogs() {
   return withDb(async (client) => {
     const result = await client.query(
@@ -228,7 +268,29 @@ export async function addLog(entry) {
   });
 }
 
+async function countIndexedDocuments() {
+  return withDb(async (client) => {
+    const result = await client.query(
+      `
+        SELECT COUNT(*)::int AS count
+        FROM documents
+        WHERE status = 'indexed'
+      `
+    );
+    return result.rows[0]?.count ?? 0;
+  });
+}
+
 export async function answerFromRag(question) {
+  const indexedDocumentCount = await countIndexedDocuments();
+
+  if (indexedDocumentCount === 0) {
+    return {
+      answer: "I could not find indexed uploaded documents yet. Please upload and index a PDF first.",
+      sources: []
+    };
+  }
+
   const embedding = await createEmbedding(question);
   const chunks = await searchRelevantChunks(embedding);
 

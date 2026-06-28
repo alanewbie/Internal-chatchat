@@ -3,6 +3,7 @@ import {
   askQuestion,
   createDocumentUpload,
   createFaq,
+  deleteDocument,
   indexDocument,
   loadDocuments,
   loadFaqs,
@@ -161,6 +162,12 @@ export function App() {
     }
   }
 
+  async function handleDeleteDocument(documentId: string) {
+    await deleteDocument(documentId);
+    await refreshAdminData();
+    setStatus("RAG file deleted.");
+  }
+
   function handleLogout() {
     setRole(null);
     setAdminView("overview");
@@ -236,6 +243,9 @@ export function App() {
                 <a href={document.url} target="_blank" rel="noreferrer">
                   Download source
                 </a>
+                <button type="button" onClick={() => void handleDeleteDocument(document.id)}>
+                  Delete
+                </button>
               </div>
             ))}
           </div>

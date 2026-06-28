@@ -4,6 +4,7 @@ import {
   addLog,
   answerFromRag,
   createDocumentUpload,
+  deleteDocument,
   indexDocument,
   getPromptConfig,
   getRuntimeStatus,
@@ -21,6 +22,8 @@ function notFound(res) {
 
 async function handleChat(req, res) {
   const body = await readJson(req);
+  const startedAt = Date.now();
+  console.log(`Chat request started: ${(body.question ?? "").slice(0, 80)}`);
   const entries = await listFaqs();
   const match = matchFaq(body.question ?? "", entries);
 
@@ -35,6 +38,7 @@ async function handleChat(req, res) {
       mode: "faq",
       sources: []
     });
+    console.log(`Chat request completed in ${Date.now() - startedAt}ms using FAQ`);
     return;
   }
 
@@ -51,6 +55,7 @@ async function handleChat(req, res) {
     mode: "rag",
     sources: ragResult.sources
   });
+  console.log(`Chat request completed in ${Date.now() - startedAt}ms using RAG`);
 }
 
 async function handler(req, res) {
@@ -121,6 +126,13 @@ async function handler(req, res) {
   if (req.method === "POST" && req.url === "/admin/documents/index") {
     const body = await readJson(req);
     const payload = await indexDocument(body.documentId ?? "");
+    sendJson(res, 200, payload);
+    return;
+  }
+
+  if (req.method === "DELETE" && req.url.startsWith("/admin/documents/")) {
+    const documentId = decodeURIComponent(req.url.replace("/admin/documents/", ""));
+    const payload = await deleteDocument(documentId);
     sendJson(res, 200, payload);
     return;
   }
