@@ -13,13 +13,15 @@ import {
   readTextObject
 } from "../lib/s3.js";
 
+const MAX_RAG_CHUNKS = Number(process.env.MAX_RAG_CHUNKS ?? "30");
+
 function sleep(milliseconds) {
   return new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
   });
 }
 
-function chunkText(text, chunkSize = 1200, overlap = 200) {
+function chunkText(text, chunkSize = 4000, overlap = 400) {
   const chunks = [];
   let start = 0;
 
@@ -195,6 +197,12 @@ export async function indexDocument(documentId) {
 
   if (chunks.length === 0) {
     throw new Error("Document text extraction returned no readable content");
+  }
+
+  if (chunks.length > MAX_RAG_CHUNKS) {
+    throw new Error(
+      `This PDF is too large for cheap demo indexing: ${chunks.length} chunks detected, limit is ${MAX_RAG_CHUNKS}. Use a smaller PDF or raise MAX_RAG_CHUNKS knowingly.`
+    );
   }
 
   const vectorChunks = [];
