@@ -194,6 +194,20 @@ export function App() {
     setStatus("RAG file deleted.");
   }
 
+  async function handleIndexDocument(documentId: string) {
+    setIsUploadingDocument(true);
+
+    try {
+      const indexed = await indexDocument(documentId);
+      await refreshAdminData();
+      setStatus(`PDF indexed. ${indexed.indexedChunks} chunks are ready for RAG.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Document indexing failed.");
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  }
+
   function handleLogout() {
     setRole(null);
     setAdminView("overview");
@@ -270,6 +284,9 @@ export function App() {
                 <a href={document.url} target="_blank" rel="noreferrer">
                   Download source
                 </a>
+                <button type="button" onClick={() => void handleIndexDocument(document.id)} disabled={isUploadingDocument}>
+                  Re-index
+                </button>
                 <button type="button" onClick={() => void handleDeleteDocument(document.id)}>
                   Delete
                 </button>

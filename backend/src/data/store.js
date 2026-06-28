@@ -3,7 +3,7 @@ import { PDFParse } from "pdf-parse";
 import { config } from "../config.js";
 import { answerWithContext, createEmbedding } from "../lib/bedrock.js";
 import { withDb, newId } from "../lib/db.js";
-import { deleteDocumentChunks, indexDocumentChunks, searchRelevantChunks } from "../lib/opensearch.js";
+import { deleteDocumentChunks, indexDocumentChunks, searchRelevantChunks } from "../lib/vectorStore.js";
 import {
   buildDocumentKey,
   createDownloadUrl,
@@ -332,7 +332,7 @@ export function getRuntimeStatus() {
   return {
     awsRegion: config.awsRegion,
     rdsHost: config.rds.host,
-    openSearchEndpoint: config.openSearch.endpoint,
+    vectorStore: "aurora-postgresql",
     s3Bucket: config.s3.bucket,
     bedrockChatModelId: config.bedrock.chatModelId,
     bedrockEmbedModelId: config.bedrock.embedModelId
