@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "build": "node --eval \"import('./src/config.js'); import('./src/lib/db.js'); import('./src/lib/bedrock.js'); import('./src/lib/opensearch.js'); import('./src/lib/s3.js'); console.log('Backend modules loaded')\""
+    "build": "node --eval \"import('./src/lambda.js'); console.log('Backend modules loaded')\""
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1075.0",

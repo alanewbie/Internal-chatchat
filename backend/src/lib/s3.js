@@ -40,6 +40,29 @@ export async function readTextObject(key) {
   return response.Body.transformToString();
 }
 
+export async function readJsonObject(key, fallback) {
+  try {
+    const text = await readTextObject(key);
+    return JSON.parse(text);
+  } catch (error) {
+    if (error?.name === "NoSuchKey" || error?.Code === "NoSuchKey") {
+      return fallback;
+    }
+    throw error;
+  }
+}
+
+export async function writeJsonObject(key, value) {
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: config.s3.bucket,
+      Key: key,
+      ContentType: "application/json",
+      Body: JSON.stringify(value)
+    })
+  );
+}
+
 export async function readObjectBuffer(key) {
   const response = await s3Client.send(
     new GetObjectCommand({

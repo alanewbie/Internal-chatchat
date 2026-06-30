@@ -33,6 +33,8 @@ export function App() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role | null>(null);
   const [adminView, setAdminView] = useState<AdminView>("overview");
+  const [adminToken, setAdminToken] = useState(() => localStorage.getItem("internal-chatchat-admin-token") ?? "");
+  const [adminTokenInput, setAdminTokenInput] = useState("");
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [latestSources, setLatestSources] = useState<ChatResponse["sources"]>([]);
@@ -49,10 +51,10 @@ export function App() {
   const [status, setStatus] = useState("Ready.");
 
   useEffect(() => {
-    if (role === "admin") {
+    if (role === "admin" && adminToken) {
       void refreshAdminData();
     }
-  }, [role]);
+  }, [role, adminToken]);
 
   async function refreshAdminData() {
     const [faqData, promptData, documentData, logData] = await Promise.all([
@@ -213,6 +215,15 @@ export function App() {
     setMessages([]);
     setLatestSources([]);
     setStatus("Logged out.");
+  }
+
+  function handleSaveAdminToken(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = adminTokenInput.trim();
+    localStorage.setItem("internal-chatchat-admin-token", token);
+    setAdminToken(token);
+    setAdminTokenInput("");
+    setStatus("Admin token saved in this browser.");
   }
 
   function renderAdminPanel() {
@@ -454,7 +465,27 @@ export function App() {
               Log out
             </button>
           </aside>
-          <section className="admin-main">{renderAdminPanel()}</section>
+          <section className="admin-main">
+            {adminToken ? (
+              renderAdminPanel()
+            ) : (
+              <section className="admin-content">
+                <h2>Admin token</h2>
+                <p className="hint">Enter the temporary admin token to manage FAQ, RAG files, logs, and prompt settings.</p>
+                <form onSubmit={handleSaveAdminToken} className="stack compact-form">
+                  <input
+                    type="password"
+                    value={adminTokenInput}
+                    onChange={(event) => setAdminTokenInput(event.target.value)}
+                    placeholder="Admin token"
+                  />
+                  <button type="submit" disabled={adminTokenInput.trim().length === 0}>
+                    Save token
+                  </button>
+                </form>
+              </section>
+            )}
+          </section>
         </div>
       </div>
       <p className="footnote">{status}</p>

@@ -1,24 +1,63 @@
 import "dotenv/config";
-import { PDFParse } from "pdf-parse";
+import crypto from "node:crypto";
 import { config } from "../config.js";
 import { answerWithContext, createEmbedding } from "../lib/bedrock.js";
-import { withDb, newId } from "../lib/db.js";
-import { deleteDocumentChunks, indexDocumentChunks, searchRelevantChunks } from "../lib/vectorStore.js";
 import {
   buildDocumentKey,
   createDownloadUrl,
   createUploadUrl,
   deleteObject,
+  readJsonObject,
   readObjectBuffer,
-  readTextObject
+  readTextObject,
+  writeJsonObject
 } from "../lib/s3.js";
 
+const APP_STATE_KEY = process.env.APP_STATE_KEY ?? "app/state.json";
 const MAX_RAG_CHUNKS = Number(process.env.MAX_RAG_CHUNKS ?? "59");
 
+const defaultState = {
+  faqs: [
+    {
+      id: "faq-seed-1",
+      question: "How do I reset my VPN password?",
+      answer: "Open the IT portal, choose Password Reset, and follow the MFA verification steps.",
+      tags: ["it", "vpn", "password"]
+    },
+    {
+      id: "faq-seed-2",
+      question: "How do I request annual leave?",
+      answer: "Submit your leave request in Workday and notify your line manager for approval.",
+      tags: ["hr", "leave"]
+    }
+  ],
+  prompt: "You are an internal HR and IT assistant. Answer clearly, be concise, and prefer approved internal guidance.",
+  documents: [],
+  chunks: [],
+  logs: []
+};
+
+function newId(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+async function readState() {
+  return readJsonObject(APP_STATE_KEY, defaultState);
+}
+
+async function writeState(state) {
+  await writeJsonObject(APP_STATE_KEY, state);
+}
+
+async function updateState(work) {
+  const state = await readState();
+  const result = await work(state);
+  await writeState(state);
+  return result;
+}
+
 function sleep(milliseconds) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function chunkText(text, chunkSize = 4000, overlap = 400) {
@@ -28,24 +67,41 @@ function chunkText(text, chunkSize = 4000, overlap = 400) {
   while (start < text.length) {
     const end = Math.min(start + chunkSize, text.length);
     chunks.push(text.slice(start, end).trim());
-    if (end === text.length) {
-      break;
-    }
+    if (end === text.length) break;
     start = end - overlap;
   }
 
   return chunks.filter(Boolean);
 }
 
+function cosineSimilarity(left, right) {
+  if (left.length === 0 || left.length !== right.length) return Number.NEGATIVE_INFINITY;
+
+  let dot = 0;
+  let leftMagnitude = 0;
+  let rightMagnitude = 0;
+
+  for (let index = 0; index < left.length; index += 1) {
+    dot += left[index] * right[index];
+    leftMagnitude += left[index] ** 2;
+    rightMagnitude += right[index] ** 2;
+  }
+
+  if (leftMagnitude === 0 || rightMagnitude === 0) return Number.NEGATIVE_INFINITY;
+  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
+}
+
 async function extractDocumentText(document) {
-  const lowerName = document.file_name.toLowerCase();
+  const lowerName = document.fileName.toLowerCase();
 
   if (lowerName.endsWith(".txt") || lowerName.endsWith(".md")) {
-    return readTextObject(document.s3_key);
+    return readTextObject(document.s3Key);
   }
 
   if (lowerName.endsWith(".pdf")) {
-    const buffer = await readObjectBuffer(document.s3_key);
+    if (!globalThis.DOMMatrix) globalThis.DOMMatrix = class DOMMatrix {};
+    const { PDFParse } = await import("pdf-parse");
+    const buffer = await readObjectBuffer(document.s3Key);
     const parser = new PDFParse({ data: buffer });
     const parsed = await parser.getText();
     await parser.destroy();
@@ -56,81 +112,41 @@ async function extractDocumentText(document) {
 }
 
 export async function listFaqs() {
-  return withDb(async (client) => {
-    const result = await client.query(
-      `
-        SELECT id, question, answer, tags
-        FROM faq_entries
-        ORDER BY updated_at DESC
-      `
-    );
-    return result.rows;
-  });
+  const state = await readState();
+  return state.faqs;
 }
 
 export async function addFaq({ question, answer, tags }) {
-  return withDb(async (client) => {
-    const id = newId("faq");
-    const result = await client.query(
-      `
-        INSERT INTO faq_entries (id, question, answer, tags)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, question, answer, tags
-      `,
-      [id, question, answer, tags]
-    );
-    return result.rows[0];
+  return updateState((state) => {
+    const faq = { id: newId("faq"), question, answer, tags };
+    state.faqs.unshift(faq);
+    return faq;
   });
 }
 
 export async function getPromptConfig() {
-  return withDb(async (client) => {
-    const result = await client.query(
-      `
-        SELECT system_prompt AS "systemPrompt"
-        FROM app_config
-        WHERE config_key = 'system'
-      `
-    );
-    return result.rows[0];
-  });
+  const state = await readState();
+  return { systemPrompt: state.prompt };
 }
 
 export async function setPromptConfig(systemPrompt) {
-  return withDb(async (client) => {
-    const result = await client.query(
-      `
-        UPDATE app_config
-        SET system_prompt = $1, updated_at = NOW()
-        WHERE config_key = 'system'
-        RETURNING system_prompt AS "systemPrompt"
-      `,
-      [systemPrompt]
-    );
-    return result.rows[0];
+  return updateState((state) => {
+    state.prompt = systemPrompt;
+    return { systemPrompt };
   });
 }
 
 export async function listDocuments() {
-  return withDb(async (client) => {
-    const result = await client.query(
-      `
-        SELECT document_id, title, file_name, s3_key, status
-        FROM documents
-        ORDER BY uploaded_at DESC
-      `
-    );
-
-    return Promise.all(
-      result.rows.map(async (row) => ({
-        id: row.document_id,
-        title: row.title,
-        fileName: row.file_name,
-        status: row.status,
-        url: await createDownloadUrl(row.s3_key)
-      }))
-    );
-  });
+  const state = await readState();
+  return Promise.all(
+    state.documents.map(async (document) => ({
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      status: document.status,
+      url: await createDownloadUrl(document.s3Key)
+    }))
+  );
 }
 
 export async function createDocumentUpload({ title, fileName, contentType, uploadedBy = "admin" }) {
@@ -138,222 +154,125 @@ export async function createDocumentUpload({ title, fileName, contentType, uploa
   const s3Key = buildDocumentKey(fileName);
   const uploadUrl = await createUploadUrl({ key: s3Key, contentType });
 
-  await withDb(async (client) => {
-    await client.query(
-      `
-        INSERT INTO documents (document_id, title, file_name, s3_key, status, uploaded_by)
-        VALUES ($1, $2, $3, $4, 'uploaded', $5)
-      `,
-      [documentId, title, fileName, s3Key, uploadedBy]
-    );
+  await updateState((state) => {
+    state.documents.unshift({
+      id: documentId,
+      title,
+      fileName,
+      s3Key,
+      status: "uploaded",
+      uploadedBy,
+      uploadedAt: new Date().toISOString()
+    });
   });
 
-  return {
-    documentId,
-    s3Key,
-    uploadUrl
-  };
+  return { documentId, s3Key, uploadUrl };
 }
 
 export async function indexDocument(documentId) {
-  const document = await withDb(async (client) => {
-    const result = await client.query(
-      `
-        SELECT document_id, title, file_name, s3_key, status
-        FROM documents
-        WHERE document_id = $1
-      `,
-      [documentId]
-    );
-    return result.rows[0];
-  });
+  const state = await readState();
+  const document = state.documents.find((item) => item.id === documentId);
 
-  if (!document) {
-    throw new Error("Document not found");
-  }
+  if (!document) throw new Error("Document not found");
 
   let text;
   try {
     text = await extractDocumentText(document);
   } catch (error) {
     if (error?.name === "NoSuchKey" || error?.Code === "NoSuchKey") {
-      await withDb(async (client) => {
-        await client.query(
-          `
-            UPDATE documents
-            SET status = 'missing_file'
-            WHERE document_id = $1
-          `,
-          [documentId]
-        );
-      });
-
-      throw new Error(`S3 file is missing for this document: ${document.s3_key}. Delete this record and upload the PDF again.`);
+      document.status = "missing_file";
+      await writeState(state);
+      throw new Error(`S3 file is missing for this document: ${document.s3Key}. Delete this record and upload the PDF again.`);
     }
-
     throw error;
   }
+
   const chunks = chunkText(text);
-
-  if (chunks.length === 0) {
-    throw new Error("Document text extraction returned no readable content");
-  }
-
+  if (chunks.length === 0) throw new Error("Document text extraction returned no readable content");
   if (chunks.length > MAX_RAG_CHUNKS) {
-    throw new Error(
-      `This PDF is too large for cheap demo indexing: ${chunks.length} chunks detected, limit is ${MAX_RAG_CHUNKS}. Use a smaller PDF or raise MAX_RAG_CHUNKS knowingly.`
-    );
+    throw new Error(`This PDF is too large for cheap demo indexing: ${chunks.length} chunks detected, limit is ${MAX_RAG_CHUNKS}.`);
   }
 
   const vectorChunks = [];
   for (const [index, chunk] of chunks.entries()) {
-    if (index > 0) {
-      await sleep(1_000);
-    }
-
-    const vector = await createEmbedding(chunk);
+    if (index > 0) await sleep(1_000);
     vectorChunks.push({
       chunkId: newId("chunk"),
-      documentId: document.document_id,
+      documentId: document.id,
       title: document.title,
-      s3Key: document.s3_key,
+      s3Key: document.s3Key,
       chunkText: chunk,
-      vector
+      vector: await createEmbedding(chunk)
     });
   }
 
-  await indexDocumentChunks(vectorChunks);
+  state.chunks = state.chunks.filter((chunk) => chunk.documentId !== document.id).concat(vectorChunks);
+  document.status = "indexed";
+  await writeState(state);
 
-  await withDb(async (client) => {
-    await client.query(
-      `
-        UPDATE documents
-        SET status = 'indexed'
-        WHERE document_id = $1
-      `,
-      [documentId]
-    );
-  });
-
-  return {
-    documentId: document.document_id,
-    indexedChunks: vectorChunks.length,
-    status: "indexed"
-  };
+  return { documentId: document.id, indexedChunks: vectorChunks.length, status: "indexed" };
 }
 
 export async function deleteDocument(documentId) {
-  const document = await withDb(async (client) => {
-    const result = await client.query(
-      `
-        SELECT document_id, s3_key
-        FROM documents
-        WHERE document_id = $1
-      `,
-      [documentId]
-    );
-    return result.rows[0];
-  });
+  const state = await readState();
+  const document = state.documents.find((item) => item.id === documentId);
 
-  if (!document) {
-    throw new Error("Document not found");
-  }
+  if (!document) throw new Error("Document not found");
 
-  await deleteDocumentChunks(document.document_id);
-  await deleteObject(document.s3_key);
+  await deleteObject(document.s3Key);
+  state.documents = state.documents.filter((item) => item.id !== document.id);
+  state.chunks = state.chunks.filter((chunk) => chunk.documentId !== document.id);
+  await writeState(state);
 
-  await withDb(async (client) => {
-    await client.query(
-      `
-        DELETE FROM documents
-        WHERE document_id = $1
-      `,
-      [document.document_id]
-    );
-  });
-
-  return { documentId: document.document_id, deleted: true };
+  return { documentId: document.id, deleted: true };
 }
 
 export async function listLogs() {
-  return withDb(async (client) => {
-    const result = await client.query(
-      `
-        SELECT
-          log_id AS id,
-          created_at AS timestamp,
-          question,
-          mode,
-          answer
-        FROM chat_logs
-        ORDER BY created_at DESC
-        LIMIT 200
-      `
-    );
-    return result.rows;
-  });
+  const state = await readState();
+  return state.logs.slice(0, 200);
 }
 
 export async function addLog(entry) {
-  return withDb(async (client) => {
-    await client.query(
-      `
-        INSERT INTO chat_logs (log_id, question, mode, answer)
-        VALUES ($1, $2, $3, $4)
-      `,
-      [newId("log"), entry.question, entry.mode, entry.answer]
-    );
-  });
-}
-
-async function countIndexedDocuments() {
-  return withDb(async (client) => {
-    const result = await client.query(
-      `
-        SELECT COUNT(*)::int AS count
-        FROM documents
-        WHERE status = 'indexed'
-      `
-    );
-    return result.rows[0]?.count ?? 0;
+  await updateState((state) => {
+    state.logs.unshift({
+      id: newId("log"),
+      timestamp: new Date().toISOString(),
+      question: entry.question,
+      mode: entry.mode,
+      answer: entry.answer
+    });
+    state.logs = state.logs.slice(0, 200);
   });
 }
 
 export async function answerFromRag(question) {
-  const indexedDocumentCount = await countIndexedDocuments();
+  const state = await readState();
+  const indexedDocuments = state.documents.filter((document) => document.status === "indexed");
 
-  if (indexedDocumentCount === 0) {
-    return {
-      answer: "I could not find indexed uploaded documents yet. Please upload and index a PDF first.",
-      sources: []
-    };
+  if (indexedDocuments.length === 0) {
+    return { answer: "I could not find indexed uploaded documents yet. Please upload and index a PDF first.", sources: [] };
   }
 
   const embedding = await createEmbedding(question);
-  const chunks = await searchRelevantChunks(embedding);
+  const chunks = state.chunks
+    .map((chunk) => ({ ...chunk, score: cosineSimilarity(embedding, chunk.vector) }))
+    .filter((chunk) => Number.isFinite(chunk.score))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 4);
 
   if (chunks.length === 0) {
-    return {
-      answer: "I could not find relevant uploaded documents yet. Please upload and index source material first.",
-      sources: []
-    };
+    return { answer: "I could not find relevant uploaded documents yet. Please upload and index source material first.", sources: [] };
   }
 
-  const promptConfig = await getPromptConfig();
   const answer = await answerWithContext({
-    systemPrompt: promptConfig.systemPrompt,
+    systemPrompt: state.prompt,
     question,
-    contexts: chunks.map((chunk) => chunk.chunk_text)
+    contexts: chunks.map((chunk) => chunk.chunkText)
   });
 
   const uniqueSources = new Map();
   for (const chunk of chunks) {
-    if (!uniqueSources.has(chunk.s3_key)) {
-      uniqueSources.set(chunk.s3_key, {
-        title: chunk.title,
-        s3Key: chunk.s3_key
-      });
-    }
+    if (!uniqueSources.has(chunk.s3Key)) uniqueSources.set(chunk.s3Key, { title: chunk.title, s3Key: chunk.s3Key });
   }
 
   const sources = await Promise.all(
@@ -369,8 +288,8 @@ export async function answerFromRag(question) {
 export function getRuntimeStatus() {
   return {
     awsRegion: config.awsRegion,
-    rdsHost: config.rds.host,
-    vectorStore: "aurora-postgresql",
+    stateStore: `s3://${config.s3.bucket}/${APP_STATE_KEY}`,
+    vectorStore: "s3-json",
     s3Bucket: config.s3.bucket,
     bedrockChatModelId: config.bedrock.chatModelId,
     bedrockEmbedModelId: config.bedrock.embedModelId

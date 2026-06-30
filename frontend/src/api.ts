@@ -48,9 +48,13 @@ const API_BASE =
   "https://in-2c1ae487a2ab4bbc9f7e6f3944c712e5.ecs.us-east-1.on.aws";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const ADMIN_TOKEN = localStorage.getItem("internal-chatchat-admin-token")?.trim();
+  const adminHeaders = path.startsWith("/admin/") && ADMIN_TOKEN ? { "x-admin-token": ADMIN_TOKEN } : {};
+
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      ...adminHeaders,
       ...(init?.headers ?? {})
     },
     ...init
